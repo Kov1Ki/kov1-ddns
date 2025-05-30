@@ -3,6 +3,7 @@
 set -o errexit  # 任何命令失败时立即退出
 set -o nounset  # 使用未定义变量时报错
 set -o pipefail # 管道中任何命令失败时整个管道失败
+export TZ="Asia/Shanghai"
 
 # 配置存储目录
 CONFIG_DIR="/etc/cf-ddns"
@@ -89,6 +90,22 @@ init_dirs() {
     touch "$LOG_FILE"
     chmod 600 "$LOG_FILE"
     echo -e "${BLUE}创建日志文件: $LOG_FILE${NC}"
+  fi
+}
+
+# =====================================================================
+# 函数：日志轮换，保留7天内的日志
+# =====================================================================
+rotate_logs() {
+  local log_file="$1"
+  local max_days=7
+  if [ -f "$log_file" ]; then
+    local age=$(( $(date +%s) - $(stat -c %Y "$log_file") ))
+    local max_age=$((max_days * 24 * 60 * 60))
+    if [ "$age" -gt "$max_age" ]; then
+      rm -f "$log_file"
+      echo "[$(date)] 日志文件已删除（超过$max_days天）: $log_file" >> "$LOG_FILE"
+    fi
   fi
 }
 
@@ -290,7 +307,7 @@ configure_telegram() {
   ✅ Telegram通知配置成功！
   域名: \`$CFRECORD_NAME\`
   记录类型: \`$CFRECORD_TYPE\`
-  时间: $(date +"%Y-%m-%d %H:%M:%S")"; then
+  时间: $(TZ="Asia/Shanghai" date +"%Y-%m-%d %H:%M:%S %Z")"; then
     echo -e "${GREEN}测试消息发送成功! 请检查Telegram${NC}"
   else
     echo -e "${RED}测试消息发送失败! 请检查配置${NC}"
@@ -471,7 +488,7 @@ get_wan_ip() {
   🔍 无法获取公网IP地址！
   记录类型: \`$record_type\`
   域名: \`$CFRECORD_NAME\`
-  时间: $(date +"%Y-%m-%d %H:%M:%S")
+  时间: $(TZ="Asia/Shanghai" date +"%Y-%m-%d %H:%M:%S %Z")
   ⚠️ 请检查网络连接或IP检测服务"
   
   send_tg_notification "$message"
@@ -599,7 +616,7 @@ update_record() {
   🔍 记录类型: \`$record_type\`
   域名: \`$record_name\`
   尝试次数: $retries
-  时间: $(date +"%Y-%m-%d %H:%M:%S")
+  时间: $(TZ="Asia/Shanghai" date +"%Y-%m-%d %H:%M:%S %Z")
   ⚠️ 请检查日志获取详细信息"
   
   send_tg_notification "$message"
@@ -640,7 +657,7 @@ process_record_type() {
       域名: \`$CFRECORD_NAME\`
       新IP: \`$current_ip\`
       旧IP: \`${old_ip:-无}\`
-      时间: $(date +"%Y-%m-%d %H:%M:%S")"
+      时间: $(TZ="Asia/Shanghai" date +"%Y-%m-%d %H:%M:%S %Z")"
       send_tg_notification "$message"
     else
       echo "[$record_type] 错误: 更新失败" >> "$LOG_FILE"
@@ -656,6 +673,9 @@ process_record_type() {
 # 函数：执行DDNS更新
 # =====================================================================
 run_ddns_update() {
+  # 添加日志轮换检查
+  rotate_logs "$LOG_FILE"
+  
   # 记录执行开始
   echo "==========================================================" >> "$LOG_FILE"
   echo "$(date) - 开始执行动态DNS更新" >> "$LOG_FILE"
@@ -810,6 +830,9 @@ view_logs() {
 # =====================================================================
 # 主程序入口
 # =====================================================================
+
+# 在每次执行更新前检查日志
+rotate_logs "$LOG_FILE"
 
 # 检查是否以root运行
 if [ "$(id -u)" -ne 0 ]; then
