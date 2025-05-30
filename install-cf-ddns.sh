@@ -8,7 +8,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # 定义变量
-SCRIPT_URL="https://raw.githubusercontent.com/你的用户名/你的仓库/main/cf-ddns.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/Kov1Ki/kov1-ddns/main/cf-ddns.sh"
 INSTALL_PATH="/usr/local/bin/cf-ddns"
 LINK_PATH="/usr/local/bin/ddns"
 
