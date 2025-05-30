@@ -380,27 +380,38 @@ add_cron_job() {
 # 函数：移除定时任务
 # =====================================================================
 remove_cron_job() {
-  # 检查是否存在定时任务
-  if crontab -l 2>/dev/null | grep -q "$CRON_JOB_ID"; then
-    echo -e "${BLUE}正在移除定时任务...${NC}"
+  # 获取脚本路径（用于匹配）
+  local script_path="$(realpath "$0")"
+  local script_name=$(basename "$script_path")
+  
+  # 检查是否存在定时任务（通过标识或脚本路径）
+  local cron_exists=$(crontab -l 2>/dev/null | grep -c -e "$CRON_JOB_ID" -e "$script_name" -e "$script_path")
+  
+  if [ "$cron_exists" -gt 0 ]; then
+    echo -e "${BLUE}正在移除 $cron_exists 个定时任务...${NC}"
     
     # 创建临时crontab文件
     local temp_cron=$(mktemp)
     
-    # 过滤掉当前任务的crontab
-    crontab -l | grep -v "$CRON_JOB_ID" > "$temp_cron"
+    # 过滤掉所有匹配的任务（包括标识行和命令行）
+    crontab -l 2>/dev/null | grep -v -e "$CRON_JOB_ID" -e "$script_name" -e "$script_path" > "$temp_cron"
     
     # 应用新的crontab
     crontab "$temp_cron"
     rm -f "$temp_cron"
     
     # 验证是否移除成功
-    if crontab -l 2>/dev/null | grep -q "$CRON_JOB_ID"; then
-      echo -e "${RED}错误: 定时任务移除失败! 请手动检查${NC}"
-      return 1
-    else
-      echo -e "${GREEN}定时任务已成功移除${NC}"
+    local remaining=$(crontab -l 2>/dev/null | grep -c -e "$CRON_JOB_ID" -e "$script_name" -e "$script_path" || true)
+    if [ "$remaining" -eq 0 ]; then
+      echo -e "${GREEN}成功移除所有定时任务${NC}"
       return 0
+    else
+      echo -e "${RED}错误: 仍有 $remaining 个定时任务未移除! 请手动检查${NC}"
+      echo -e "${YELLOW}请运行: crontab -e 手动删除包含以下内容的行:${NC}"
+      echo -e " - '$CRON_JOB_ID'"
+      echo -e " - '$script_name'"
+      echo -e " - '$script_path'"
+      return 1
     fi
   else
     echo -e "${YELLOW}未找到定时任务，无需移除${NC}"
@@ -414,8 +425,33 @@ remove_cron_job() {
 uninstall_ddns() {
   echo -e "${YELLOW}开始卸载DDNS...${NC}"
   
-  # 移除定时任务
+  # 首先尝试正常移除定时任务
   remove_cron_job
+  
+  # 添加额外检查
+  echo -e "${YELLOW}正在检查定时任务是否完全移除...${NC}"
+  local script_path="$(realpath "$0")"
+  local script_name=$(basename "$script_path")
+  local remaining_tasks=$(crontab -l 2>/dev/null | grep -c -e "$CRON_JOB_ID" -e "$script_name" -e "$script_path" || true)
+  
+  if [ "$remaining_tasks" -gt 0 ]; then
+    echo -e "${RED}警告: 发现 $remaining_tasks 个残留定时任务${NC}"
+    
+    # 提供强制移除选项
+    read -p "是否尝试强制移除所有定时任务? [y/N]: " force_remove
+    if [[ "${force_remove,,}" =~ ^y$ ]]; then
+      echo -e "${YELLOW}正在强制移除所有定时任务...${NC}"
+      crontab -l 2>/dev/null | grep -v -e "$CRON_JOB_ID" -e "$script_name" -e "$script_path" | crontab -
+      echo -e "${GREEN}强制移除完成!${NC}"
+    else
+      echo -e "${YELLOW}请手动运行以下命令移除:${NC}"
+      echo "crontab -e"
+      echo -e "${YELLOW}然后删除所有包含以下内容的行:${NC}"
+      echo " - '$CRON_JOB_ID'"
+      echo " - '$script_name'"
+      echo " - '$script_path'"
+    fi
+  fi
   
   # 删除系统路径下的脚本
   if [ -f "/usr/local/bin/cf-ddns" ]; then
