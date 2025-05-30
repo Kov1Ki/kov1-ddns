@@ -380,9 +380,32 @@ add_cron_job() {
 # 函数：移除定时任务
 # =====================================================================
 remove_cron_job() {
-  # 删除定时任务
-  crontab -l | grep -v "$CRON_JOB_ID" | crontab - 2>/dev/null
-  echo -e "${GREEN}已移除定时任务${NC}"
+  # 检查是否存在定时任务
+  if crontab -l 2>/dev/null | grep -q "$CRON_JOB_ID"; then
+    echo -e "${BLUE}正在移除定时任务...${NC}"
+    
+    # 创建临时crontab文件
+    local temp_cron=$(mktemp)
+    
+    # 过滤掉当前任务的crontab
+    crontab -l | grep -v "$CRON_JOB_ID" > "$temp_cron"
+    
+    # 应用新的crontab
+    crontab "$temp_cron"
+    rm -f "$temp_cron"
+    
+    # 验证是否移除成功
+    if crontab -l 2>/dev/null | grep -q "$CRON_JOB_ID"; then
+      echo -e "${RED}错误: 定时任务移除失败! 请手动检查${NC}"
+      return 1
+    else
+      echo -e "${GREEN}定时任务已成功移除${NC}"
+      return 0
+    fi
+  else
+    echo -e "${YELLOW}未找到定时任务，无需移除${NC}"
+    return 0
+  fi
 }
 
 # =====================================================================
@@ -453,6 +476,7 @@ uninstall_ddns() {
   
   echo -e "${GREEN}DDNS卸载完成${NC}"
 }
+
 
 
 # =====================================================================
