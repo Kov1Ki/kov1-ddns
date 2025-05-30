@@ -4,18 +4,6 @@ set -o errexit  # 任何命令失败时立即退出
 set -o nounset  # 使用未定义变量时报错
 set -o pipefail # 管道中任何命令失败时整个管道失败
 
-# 如果以 ddns 名称调用，直接进入主菜单
-if [ "$(basename "$0")" = "ddns" ]; then
-  # 确保以 root 运行
-  if [ "$(id -u)" -ne 0 ]; then
-    echo -e "\033[0;31m此命令需要 root 权限，请使用: sudo ddns\033[0m"
-    exit 1
-  fi
-  # 直接显示主菜单
-  show_main_menu
-  exit 0
-fi
-
 # 配置存储目录
 CONFIG_DIR="/etc/cf-ddns"
 # 数据存储目录
@@ -278,6 +266,18 @@ uninstall_ddns() {
   # 移除定时任务
   remove_cron_job
   
+  # 删除系统路径下的脚本
+  if [ -f "/usr/local/bin/cf-ddns" ]; then
+    rm -f "/usr/local/bin/cf-ddns"
+    echo -e "${GREEN}已删除系统路径下的脚本: /usr/local/bin/cf-ddns${NC}"
+  fi
+  
+  # 删除快捷键链接
+  if [ -f "/usr/local/bin/d" ]; then
+    rm -f "/usr/local/bin/d"
+    echo -e "${GREEN}已删除快捷键链接: /usr/local/bin/d${NC}"
+  fi
+  
   # 询问是否删除配置文件
   read -p "是否删除所有配置文件? [y/N]: " delete_choice
   if [[ "${delete_choice,,}" =~ ^y$ ]]; then
@@ -310,8 +310,22 @@ uninstall_ddns() {
     echo -e "${YELLOW}日志文件保留在 $LOG_FILE${NC}"
   fi
   
+  # 询问是否删除脚本自身
+  read -p "是否删除此脚本文件? [y/N]: " delete_script_choice
+  if [[ "${delete_script_choice,,}" =~ ^y$ ]]; then
+    script_self="$(realpath "$0")"
+    echo -e "${BLUE}正在删除脚本自身...${NC}"
+    rm -f "$script_self"
+    echo -e "${GREEN}脚本已删除${NC}"
+    echo -e "${GREEN}DDNS卸载完成${NC}"
+    exit 0  # 删除后立即退出
+  else
+    echo -e "${YELLOW}脚本文件保留: $(realpath "$0")${NC}"
+  fi
+  
   echo -e "${GREEN}DDNS卸载完成${NC}"
 }
+
 
 # =====================================================================
 # 函数：获取当前公网IP地址 (多源冗余)
@@ -562,12 +576,31 @@ install_ddns() {
   # 添加定时任务
   add_cron_job
   
+  # 复制脚本到系统路径
+  echo -e "${BLUE}正在安装脚本到系统路径...${NC}"
+  script_path=$(realpath "$0")
+  cp -f "$script_path" /usr/local/bin/cf-ddns
+  chmod 755 /usr/local/bin/cf-ddns
+  
+  # 添加快捷键链接 (d)
+  if [ ! -f "/usr/local/bin/d" ]; then
+    ln -s /usr/local/bin/cf-ddns /usr/local/bin/d
+    echo -e "${GREEN}已创建快捷键: 输入 'd' 即可启动脚本${NC}"
+  fi
+  
+  echo -e "${GREEN}已将脚本安装到系统路径: /usr/local/bin/cf-ddns${NC}"
+  
   # 立即运行一次更新
   echo -e "${GREEN}正在运行首次更新...${NC}"
   run_ddns_update
   echo -e "${GREEN}首次更新完成!${NC}"
   
-  echo -e "${GREEN}DDNS安装完成!${NC}"
+  echo -e "${YELLOW}=============================================="
+  echo -e " 安装完成! 您可以使用以下命令:"
+  echo -e "  - 输入 'd' 快速启动管理菜单"
+  echo -e "  - 输入 'cf-ddns' 启动管理菜单"
+  echo -e "  - 输入 'cf-ddns update' 手动更新DNS记录"
+  echo -e "==============================================${NC}"
 }
 
 # =====================================================================
