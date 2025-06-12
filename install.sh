@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Cloudflare DDNS 安装脚本
+# Cloudflare DDNS 安装脚本 - 优化版 (适用于 curl | bash 模式)
 
 # 严格的错误处理
 set -o errexit     # 任何命令失败时立即退出。
@@ -75,6 +75,65 @@ clean_previous_install() {
   install_log INFO "之前的安装清理完成。"
 }
 
+# 函数：自动添加快捷键别名
+add_alias_to_user_shell() {
+  local current_user="${SUDO_USER:-$(whoami)}" # 获取当前执行sudo命令的用户，如果不是sudo则获取当前用户
+  local user_home=$(eval echo "~$current_user") # 获取用户主目录
+  local alias_line="alias d=\"sudo $DDNS_SCRIPT_PATH\""
+  local config_file=""
+
+  install_log INFO "尝试为用户 '$current_user' 添加快捷键别名..."
+
+  # 检查用户默认 shell，优先 Zsh，其次 Bash
+  local user_shell=$(getent passwd "$current_user" | cut -d: -f7)
+
+  if [[ "$user_shell" == *"/zsh"* ]]; then
+    config_file="$user_home/.zshrc"
+    install_log INFO "检测到 Zsh shell，将修改 $config_file。"
+  elif [[ "$user_shell" == *"/bash"* ]]; then
+    config_file="$user_home/.bashrc"
+    install_log INFO "检测到 Bash shell，将修改 $config_file。"
+  else
+    echo -e "${YELLOW}警告: 未能识别用户 '${current_user}' 的 shell 类型 (${user_shell})。${NC}"
+    echo -e "${YELLOW}      无法自动添加快捷键 'd'。请手动添加。${NC}"
+    echo -e "${YELLOW}      在您的 shell 配置文件中添加: ${GREEN}alias d=\"sudo $DDNS_SCRIPT_PATH\"${NC}"
+    return 1 # 返回失败，提示用户手动操作
+  fi
+
+  # 确保配置文件存在
+  if [[ ! -f "$config_file" ]]; then
+    install_log WARN "配置文件 '$config_file' 不存在，正在尝试创建。"
+    if ! sudo -u "$current_user" touch "$config_file"; then
+      install_log ERROR "创建配置文件 '$config_file' 失败。无法自动添加快捷键。"
+      echo -e "${RED}❌ 错误: 创建配置文件 '$config_file' 失败。${NC}"
+      echo -e "${YELLOW}      请手动在您的 shell 配置文件中添加: ${GREEN}alias d=\"sudo $DDNS_SCRIPT_PATH\"${NC}"
+      return 1
+    fi
+    # 设置正确的权限，确保用户可以写入
+    sudo chmod 644 "$config_file"
+  fi
+
+  # 检查别名是否已存在，避免重复添加
+  if sudo -u "$current_user" grep -q "alias d=\"sudo $DDNS_SCRIPT_PATH\"" "$config_file"; then
+    install_log INFO "快捷键 'd' 别名已存在于 '$config_file'，无需重复添加。"
+    echo -e "${BLUE}快捷键 'd' 已存在，无需重复添加。${NC}"
+  else
+    install_log INFO "正在向 '$config_file' 追加快捷键 'd' 别名。"
+    # 使用 tee -a 并 sudo -u 来以用户身份写入文件
+    if echo "$alias_line" | sudo -u "$current_user" tee -a "$config_file" > /dev/null; then
+      install_log SUCCESS "已成功向 '$config_file' 添加快捷键 'd' 别名。"
+      echo -e "${GREEN}✅ 已成功为用户 '${current_user}' 添加快捷键 'd'。${NC}"
+      echo -e "${YELLOW}⚠️ 请运行 '${GREEN}source $config_file${YELLOW}' 或重新打开终端，以使 'd' 快捷键生效。${NC}"
+    else
+      install_log ERROR "向 '$config_file' 添加快捷键 'd' 别名失败。"
+      echo -e "${RED}❌ 错误: 自动添加快捷键 'd' 失败。${NC}"
+      echo -e "${YELLOW}      请手动在您的 shell 配置文件中添加: ${GREEN}alias d=\"sudo $DDNS_SCRIPT_PATH\"${NC}"
+      return 1
+    fi
+  fi
+  return 0
+}
+
 # 函数：执行实际的安装过程
 perform_installation() {
   install_log INFO "正在启动 Cloudflare DDNS 安装..."
@@ -82,8 +141,7 @@ perform_installation() {
 
   # --- 下载 cf-ddns.sh 脚本 ---
   echo -e "${BLUE}正在从 GitHub 下载 ${DDNS_SCRIPT_NAME}...${NC}"
-  # 将 cf-ddns.sh 下载到临时文件，然后复制
-  local temp_ddns_script=$(mktemp)
+  local temp_ddns_script=$(mktemp) # 使用 mktemp 创建临时文件
   if ! curl -sL "${GITHUB_RAW_BASE}/${DDNS_SCRIPT_NAME}" -o "$temp_ddns_script"; then
     install_log ERROR "下载 ${DDNS_SCRIPT_NAME} 失败。"
     echo -e "${RED}❌ 错误: 下载 ${DDNS_SCRIPT_NAME} 失败。请检查网络或 GitHub 仓库。${NC}"
@@ -127,14 +185,8 @@ perform_installation() {
   echo -e "${GREEN}您可以通过运行 '${BLUE}sudo $DDNS_SCRIPT_PATH${NC}' 来管理它。${NC}"
   install_log SUCCESS "安装成功完成。"
 
-  # --- 添加快捷键 (别名) 提示 ---
-  echo -e "\n${YELLOW}💡 提示: 您可以为 DDNS 脚本创建一个快捷键 'd'。${NC}"
-  echo -e "${YELLOW}   只需将以下行添加到您的 shell 配置文件中 (例如 ~/.bashrc 或 ~/.zshrc):${NC}"
-  echo -e "   ${GREEN}echo 'alias d=\"sudo $DDNS_SCRIPT_PATH\"' >> ~/.bashrc${NC}"
-  echo -e "   ${YELLOW}或 (如果您使用 Zsh):${NC}"
-  echo -e "   ${GREEN}echo 'alias d=\"sudo $DDNS_SCRIPT_PATH\"' >> ~/.zshrc${NC}"
-  echo -e "${YELLOW}   添加后，请运行 'source ~/.bashrc' 或 'source ~/.zshrc' 来使更改生效。${NC}"
-  echo -e "${YELLOW}   之后，您就可以直接输入 'd' 来运行 DDNS 管理菜单了。${NC}"
+  # --- 自动添加快捷键 (别名) ---
+  add_alias_to_user_shell
 }
 
 # =====================================================================
