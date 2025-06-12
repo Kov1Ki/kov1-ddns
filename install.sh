@@ -126,6 +126,15 @@ perform_installation() {
   echo -e "${GREEN}🎉 Cloudflare DDNS 已成功安装和配置！${NC}"
   echo -e "${GREEN}您可以通过运行 '${BLUE}sudo $DDNS_SCRIPT_PATH${NC}' 来管理它。${NC}"
   install_log SUCCESS "安装成功完成。"
+
+  # --- 添加快捷键 (别名) 提示 ---
+  echo -e "\n${YELLOW}💡 提示: 您可以为 DDNS 脚本创建一个快捷键 'd'。${NC}"
+  echo -e "${YELLOW}   只需将以下行添加到您的 shell 配置文件中 (例如 ~/.bashrc 或 ~/.zshrc):${NC}"
+  echo -e "   ${GREEN}echo 'alias d=\"sudo $DDNS_SCRIPT_PATH\"' >> ~/.bashrc${NC}"
+  echo -e "   ${YELLOW}或 (如果您使用 Zsh):${NC}"
+  echo -e "   ${GREEN}echo 'alias d=\"sudo $DDNS_SCRIPT_PATH\"' >> ~/.zshrc${NC}"
+  echo -e "${YELLOW}   添加后，请运行 'source ~/.bashrc' 或 'source ~/.zshrc' 来使更改生效。${NC}"
+  echo -e "${YELLOW}   之后，您就可以直接输入 'd' 来运行 DDNS 管理菜单了。${NC}"
 }
 
 # =====================================================================
