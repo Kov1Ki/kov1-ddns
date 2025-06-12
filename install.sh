@@ -21,7 +21,7 @@ INSTALL_DIR="/usr/local/bin"         # DDNS 脚本的安装目录
 DDNS_SCRIPT_NAME="cf-ddns.sh"        # DDNS 脚本的文件名
 DDNS_SCRIPT_PATH="$INSTALL_DIR/$DDNS_SCRIPT_NAME" # DDNS 脚本的完整路径
 # GitHub 仓库的 Raw 文件基地址，用于下载 cf-ddns.sh
-GITHUB_RAW_BASE="https://raw.githubusercontent.com/Kov1Ki/kov1-ddns/main"
+GITHUB_RAW_BASE="https://jiasu.553245.xyz/https://raw.githubusercontent.com/Kov1Ki/kov1-ddns/main"
 
 # =====================================================================
 # 函数
