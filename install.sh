@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# kov1-ddns 安装脚本 
+# Cloudflare DDNS 安装脚本
 
 # 严格的错误处理
 set -o errexit     # 任何命令失败时立即退出。
@@ -20,6 +20,8 @@ NC='\033[0m' # 无颜色 - 重置为默认
 INSTALL_DIR="/usr/local/bin"         # DDNS 脚本的安装目录
 DDNS_SCRIPT_NAME="cf-ddns.sh"        # DDNS 脚本的文件名
 DDNS_SCRIPT_PATH="$INSTALL_DIR/$DDNS_SCRIPT_NAME" # DDNS 脚本的完整路径
+# GitHub 仓库的 Raw 文件基地址，用于下载 cf-ddns.sh
+GITHUB_RAW_BASE="https://raw.githubusercontent.com/Kov1Ki/kov1-ddns/main"
 
 # =====================================================================
 # 函数
@@ -55,7 +57,8 @@ clean_previous_install() {
   if [ -f "$DDNS_SCRIPT_PATH" ]; then # 如果 DDNS 脚本已存在
     echo -e "${YELLOW}在 ${DDNS_SCRIPT_PATH} 找到之前的 DDNS 脚本。尝试卸载...${NC}"
     # 如果可能，调用现有脚本的卸载功能
-    sudo "$DDNS_SCRIPT_PATH" uninstall || true # 允许卸载失败不中断安装
+    # 使用 bash -c 执行，确保其能在大多数环境中运行
+    sudo bash -c "$DDNS_SCRIPT_PATH uninstall" || true # 允许卸载失败不中断安装
     install_log INFO "已尝试卸载之前的脚本。"
   fi
 
@@ -77,25 +80,37 @@ perform_installation() {
   install_log INFO "正在启动 Cloudflare DDNS 安装..."
   echo -e "${CYAN}🚀 正在启动 Cloudflare DDNS 安装 🚀${NC}"
 
-  # --- 复制 cf-ddns.sh 脚本 ---
-  # 确保你正在安装的 cf-ddns.sh 是优化过的版本
-  echo -e "${BLUE}正在将 DDNS 脚本复制到 ${INSTALL_DIR}...${NC}"
-  # 假设 cf-ddns.sh 与 install.sh 在同一目录
-  if ! sudo cp "./$DDNS_SCRIPT_NAME" "$DDNS_SCRIPT_PATH"; then
-    install_log ERROR "复制 $DDNS_SCRIPT_NAME 到 $INSTALL_DIR 失败。"
-    echo -e "${RED}❌ 错误: 复制 ${DDNS_SCRIPT_NAME} 到 ${INSTALL_DIR} 失败。${NC}"
+  # --- 下载 cf-ddns.sh 脚本 ---
+  echo -e "${BLUE}正在从 GitHub 下载 ${DDNS_SCRIPT_NAME}...${NC}"
+  # 将 cf-ddns.sh 下载到临时文件，然后复制
+  local temp_ddns_script=$(mktemp)
+  if ! curl -sL "${GITHUB_RAW_BASE}/${DDNS_SCRIPT_NAME}" -o "$temp_ddns_script"; then
+    install_log ERROR "下载 ${DDNS_SCRIPT_NAME} 失败。"
+    echo -e "${RED}❌ 错误: 下载 ${DDNS_SCRIPT_NAME} 失败。请检查网络或 GitHub 仓库。${NC}"
+    rm -f "$temp_ddns_script" # 清理临时文件
     exit 1
   fi
-  install_log SUCCESS "已将 $DDNS_SCRIPT_NAME 复制到 $DDNS_SCRIPT_PATH。"
+  install_log SUCCESS "已成功下载 ${DDNS_SCRIPT_NAME}。"
+
+  # --- 复制 cf-ddns.sh 脚本到安装目录 ---
+  echo -e "${BLUE}正在将 DDNS 脚本复制到 ${INSTALL_DIR}...${NC}"
+  if ! sudo cp "$temp_ddns_script" "$DDNS_SCRIPT_PATH"; then
+    install_log ERROR "复制 ${DDNS_SCRIPT_NAME} 到 ${INSTALL_DIR} 失败。"
+    echo -e "${RED}❌ 错误: 复制 ${DDNS_SCRIPT_NAME} 到 ${INSTALL_DIR} 失败。${NC}"
+    rm -f "$temp_ddns_script" # 清理临时文件
+    exit 1
+  fi
+  install_log SUCCESS "已将 ${DDNS_SCRIPT_NAME} 复制到 ${DDNS_SCRIPT_PATH}。"
+  rm -f "$temp_ddns_script" # 删除临时下载文件
 
   # --- 设置执行权限 ---
   echo -e "${BLUE}正在设置执行权限...${NC}"
   if ! sudo chmod +x "$DDNS_SCRIPT_PATH"; then
-    install_log ERROR "为 $DDNS_SCRIPT_PATH 设置执行权限失败。"
+    install_log ERROR "为 ${DDNS_SCRIPT_PATH} 设置执行权限失败。"
     echo -e "${RED}❌ 错误: 为 ${DDNS_SCRIPT_PATH} 设置执行权限失败。${NC}"
     exit 1
   fi
-  install_log SUCCESS "已为 $DDNS_SCRIPT_PATH 设置执行权限。"
+  install_log SUCCESS "已为 ${DDNS_SCRIPT_PATH} 设置执行权限。"
 
   # --- 运行 DDNS 脚本的安装命令 ---
   echo -e "${BLUE}正在运行 DDNS 脚本的交互式安装...${NC}"
@@ -103,7 +118,7 @@ perform_installation() {
   if ! sudo "$DDNS_SCRIPT_PATH" install; then
     install_log ERROR "DDNS 脚本交互式安装失败。"
     echo -e "${RED}❌ 错误: DDNS 脚本交互式安装失败。${NC}"
-    echo -e "${RED}请查看日志以获取更多详细信息。${NC}"
+    echo -e "${RED}请查看日志或再次尝试运行 'sudo ${DDNS_SCRIPT_PATH}'。${NC}"
     exit 1
   fi
   install_log SUCCESS "DDNS 脚本交互式安装完成。"
