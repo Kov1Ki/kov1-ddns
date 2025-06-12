@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
-# Cloudflare DDNS 管理脚本 - 优化版
+# Cloudflare DDNS 管理脚本
 
 # 严格的错误处理：
 set -o errexit  # 任何命令失败时立即退出。
 set -o nounset  # 使用未定义变量时报错。
 set -o pipefail # 管道中任何命令失败时整个管道失败。
 
-# 设置时区以便日志时间一致。如果需要特定时区，请修改此行。
+# 设置时区以便日志时间一致。
 export TZ="Asia/Shanghai"
 
 # --- 配置路径 ---
-CONFIG_DIR="/etc/cf-ddns"                 # 配置文件存储目录
-DATA_DIR="/var/lib/cf-ddns"               # 数据文件存储目录 (例如 IP 缓存、上次轮换日期)
-CONFIG_FILE="$CONFIG_DIR/config.conf"     # 主配置文件
-LOG_FILE="/var/log/cf-ddns.log"           # 日志文件
-LAST_ROTATED_DATE_FILE="$DATA_DIR/last_rotated_date" # 记录上次日志轮换日期的文件
-IP_CACHE_FILE="$DATA_DIR/current_ip"      # IP 缓存文件
-CRON_JOB_ID="CLOUDFLARE_DDNS_JOB"         # 定时任务的唯一标识符
+CONFIG_DIR="/etc/cf-ddns"
+DATA_DIR="/var/lib/cf-ddns"
+CONFIG_FILE="$CONFIG_DIR/config.conf"
+LOG_FILE="/var/log/cf-ddns.log"
+LAST_ROTATED_DATE_FILE="$DATA_DIR/last_rotated_date" # 记录上次日志轮换日期的文件 <--- 新增这行
+CRON_JOB_ID="CLOUDFLARE_DDNS_JOB" # 定时任务的唯一标识符
 
 # --- 默认配置参数 (将被配置文件覆盖) ---
 CFKEY=""               # Cloudflare API 密钥
@@ -25,7 +24,7 @@ CFZONE_NAME=""         # 域名区域 (例如：example.com)
 CFRECORD_NAME=""       # 完整记录名称 (例如：host.example.com)
 CFRECORD_TYPE="BOTH"   # 记录类型：A (IPv4) | AAAA (IPv6) | BOTH (双栈)
 CFTTL=120              # DNS 记录 TTL 值 (120-86400 秒)
-FORCE=false            # 强制更新模式 (忽略本地 IP 缓存，每次都更新)
+FORCE=false            # 强制更新模式 (忽略本地 IP 缓存)
 TG_BOT_TOKEN=""        # Telegram 机器人 Token
 TG_CHAT_ID=""          # Telegram 聊天 ID
 
@@ -223,6 +222,7 @@ run_ddns_update() {
   local updated_v6=false
 
   # 读取缓存的 IP 地址
+  IP_CACHE_FILE="$DATA_DIR/current_ip" # 确保路径正确
   if [ -f "$IP_CACHE_FILE" ]; then
     old_ip_v4=$(grep "ipv4=" "$IP_CACHE_FILE" | cut -d= -f2 || true)
     old_ip_v6=$(grep "ipv6=" "$IP_CACHE_FILE" | cut -d= -f2 || true)
@@ -319,7 +319,7 @@ interactive_config() {
   echo -e "${CYAN}--- DDNS 配置 ---${NC}"
   
   # 加载现有配置
-  load_config || true # 如果文件不存在也不报错，继续收集输入
+  load_config || true # 如果文件不存在也不报错
 
   read -rp "$(echo -e "${PURPLE}请输入您的 Cloudflare API 密钥 (Global API Key): ${NC}[${CFKEY:-未设置}] ")" input
   [ -n "$input" ] && CFKEY="$input"
@@ -327,24 +327,11 @@ interactive_config() {
   read -rp "$(echo -e "${PURPLE}请输入您的 Cloudflare 账户邮箱: ${NC}[${CFUSER:-未设置}] ")" input
   [ -n "$input" ] && CFUSER="$input"
 
-  # 先获取 CFZONE_NAME
   read -rp "$(echo -e "${PURPLE}请输入您的域名区域 (例如: example.com): ${NC}[${CFZONE_NAME:-未设置}] ")" input
   [ -n "$input" ] && CFZONE_NAME="$input"
 
-  # 根据 CFZONE_NAME 自动生成 CFRECORD_NAME 的建议值
-  local default_cfrecord_name="${CFRECORD_NAME:-}" # 保持现有值
-  if [[ -z "$default_cfrecord_name" && -n "$CFZONE_NAME" ]]; then
-    default_cfrecord_name="host.${CFZONE_NAME}"
-  fi
-
-  read -rp "$(echo -e "${PURPLE}请输入您的完整记录名称 (例如: host.example.com): ${NC}[${default_cfrecord_name}] ")" input
-  # 如果用户输入为空，则使用建议值；否则使用用户输入的值
-  if [[ -n "$input" ]]; then
-      CFRECORD_NAME="$input"
-  elif [[ -n "$default_cfrecord_name" ]]; then
-      CFRECORD_NAME="$default_cfrecord_name"
-  fi
-
+  read -rp "$(echo -e "${PURPLE}请输入您的完整记录名称 (例如: host.example.com): ${NC}[${CFRECORD_NAME:-未设置}] ")" input
+  [ -n "$input" ] && CFRECORD_NAME="$input"
 
   # 选择记录类型
   while true; do
@@ -369,7 +356,7 @@ interactive_config() {
       CFTTL="$input_ttl"
     else
       echo -e "${YELLOW}警告: TTL 值无效或超出范围，将使用默认值 120。${NC}"
-      CFTTL=120 # 强制设置为默认值
+      CFTTL=120
     fi
   fi
 
@@ -470,8 +457,7 @@ uninstall_ddns() {
   fi
 
   # 删除脚本自身 (如果是在安装目录中)
-  # 注意：在 install.sh 调用 uninstall 时，不要在这里删除自己
-  # 除非是用户手动运行 cf-ddns.sh uninstall
+  DDNS_SCRIPT_PATH="/usr/local/bin/$(basename "$0")" # 假设脚本在 /usr/local/bin
   if [ -f "$DDNS_SCRIPT_PATH" ]; then
     read -rp "$(echo -e "${YELLOW}是否要删除 DDNS 脚本文件本身 (${DDNS_SCRIPT_PATH})？ (y/n): ${NC}")" confirm_delete_script
     if [[ "$confirm_delete_script" =~ ^[yY]$ ]]; then
@@ -542,7 +528,7 @@ show_main_menu() {
 }
 
 # 在脚本开始时执行日志轮换
-rotate_logs
+rotate_logs # <--- 在这里调用日志轮换函数
 
 # 检查是否以 root 运行
 if [ "$(id -u)" -ne 0 ]; then
