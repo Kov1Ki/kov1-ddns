@@ -227,7 +227,162 @@ rotate_logs() {
 # 配置函数
 # =====================================================================
 
-# (interactive_config, configure_telegram, save_config, load_config 函数保持不变)
+# 函数：交互式配置 DDNS
+interactive_config() {
+  log_message INFO "正在进入交互式配置模式..."
+  echo -e "${CYAN}--- DDNS 配置 ---${NC}"
+  
+  # 加载现有配置
+  load_config || true # 如果文件不存在也不报错
+
+  read -rp "$(echo -e "${PURPLE}请输入您的 Cloudflare API 密钥 (Global API Key): ${NC}[${CFKEY:-未设置}] ")" input
+  [ -n "$input" ] && CFKEY="$input"
+
+  read -rp "$(echo -e "${PURPLE}请输入您的 Cloudflare 账户邮箱: ${NC}[${CFUSER:-未设置}] ")" input
+  [ -n "$input" ] && CFUSER="$input"
+
+  read -rp "$(echo -e "${PURPLE}请输入您的域名区域 (例如: example.com): ${NC}[${CFZONE_NAME:-未设置}] ")" input
+  [ -n "$input" ] && CFZONE_NAME="$input"
+
+  read -rp "$(echo -e "${PURPLE}请输入您的完整记录名称 (例如: host.example.com): ${NC}[${CFRECORD_NAME:-未设置}] ")" input
+  [ -n "$input" ] && CFRECORD_NAME="$input"
+  
+  # 选择记录类型
+  while true; do
+    echo -e "${PURPLE}请选择要更新的记录类型:${NC}"
+    echo -e "  ${GREEN}1) A (IPv4 only)${NC}"
+    echo -e "  ${GREEN}2) AAAA (IPv6 only)${NC}"
+    echo -e "  ${GREEN}3) BOTH (双栈)${NC}"
+    read -rp "$(echo -e "${PURPLE}选择 [1-3]: ${NC}[${CFRECORD_TYPE:-BOTH}] ")" input_type
+    case "$input_type" in
+      1) CFRECORD_TYPE="A"; break ;;
+      2) CFRECORD_TYPE="AAAA"; break ;;
+      3) CFRECORD_TYPE="BOTH"; break ;;
+      "") break ;; # 如果为空，保持默认值
+      *) echo -e "${RED}无效选项，请重新输入。${NC}" ;;
+    esac
+  done
+
+  # TTL
+  read -rp "$(echo -e "${PURPLE}请输入 TTL (120-86400秒): ${NC}[${CFTTL:-120}] ")" input_ttl
+  if [ -n "$input_ttl" ]; then
+    if [[ "$input_ttl" =~ ^[0-9]+$ ]] && (( input_ttl >= 120 && input_ttl <= 86400 )); then
+      CFTTL="$input_ttl"
+    else
+      echo -e "${YELLOW}警告: TTL 值无效或超出范围，将使用默认值 120。${NC}"
+      CFTTL=120
+    fi
+  fi
+
+  # 强制更新模式
+  while true; do
+    read -rp "$(echo -e "${PURPLE}是否强制更新模式 (忽略本地 IP 缓存，每次都更新)？ (y/n): ${NC}[${FORCE:-false}] ")" input_force
+    case "$input_force" in
+      [yY]|[yY][eE][sS]) FORCE=true; break ;;
+      [nN]|[nN][oO]) FORCE=false; break ;;
+      "") break ;;
+      *) echo -e "${RED}无效选项，请重新输入。${NC}" ;;
+    esac
+  done
+
+  save_config # 保存配置
+  log_message INFO "交互式配置完成。"
+  echo -e "${GREEN}配置已保存。${NC}"
+  sleep 1
+}
+
+# 函数：配置 Telegram 通知
+configure_telegram() {
+  log_message INFO "正在进入 Telegram 配置模式..."
+  echo -e "${CYAN}--- Telegram 通知配置 ---${NC}"
+  echo -e "${YELLOW}提示: 您可以访问 https://t.me/BotFather 创建机器人并获取 Token，${NC}"
+  echo -e "${YELLOW}然后向您的机器人发送任意消息以获取 Chat ID。${NC}"
+  echo -e "${YELLOW}您可以通过访问 https://api.telegram.org/bot<您的BOT_TOKEN>/getUpdates 获取 Chat ID。${NC}"
+  
+  load_config || true # 如果文件不存在也不报错
+
+  read -rp "$(echo -e "${PURPLE}请输入您的 Telegram Bot Token (留空则禁用): ${NC}[${TG_BOT_TOKEN:-未设置}] ")" input
+  TG_BOT_TOKEN="$input" # 允许设置为空以禁用
+
+  read -rp "$(echo -e "${PURPLE}请输入您的 Telegram Chat ID (留空则禁用): ${NC}[${TG_CHAT_ID:-未设置}] ")" input
+  TG_CHAT_ID="$input" # 允许设置为空以禁用
+
+  save_config # 保存配置
+  log_message INFO "Telegram 配置完成。"
+  echo -e "${GREEN}Telegram 配置已保存。${NC}"
+  sleep 1
+}
+
+# 函数：保存配置
+save_config() {
+  log_message INFO "正在保存配置到 $CONFIG_FILE..."
+  {
+    echo "# Cloudflare DDNS 配置"
+    echo "CFKEY=\"$CFKEY\""
+    echo "CFUSER=\"$CFUSER\""
+    echo "CFZONE_NAME=\"$CFZONE_NAME\""
+    echo "CFRECORD_NAME=\"$CFRECORD_NAME\""
+    echo "CFRECORD_TYPE=\"$CFRECORD_TYPE\""
+    echo "CFTTL=$CFTTL"
+    echo "FORCE=$FORCE"
+    echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\""
+    echo "TG_CHAT_ID=\"$TG_CHAT_ID\""
+  } > "$CONFIG_FILE"
+
+  if [ $? -eq 0 ]; then
+    log_message SUCCESS "配置已成功保存。"
+    echo -e "${GREEN}配置已成功保存到 ${CONFIG_FILE}${NC}"
+  else
+    log_message ERROR "保存配置失败。"
+    echo -e "${RED}错误: 保存配置失败到 ${CONFIG_FILE}${NC}"
+    exit 1
+  fi
+}
+
+# 函数：加载配置
+load_config() {
+  if [ -f "$CONFIG_FILE" ]; then
+    log_message INFO "正在从 $CONFIG_FILE 加载配置..."
+    # 使用 set -a 将变量导出，以便在脚本的其余部分可用
+    set -a
+    . "$CONFIG_FILE" # 源 (source) 配置文件
+    set +a
+    log_message INFO "配置加载完成。"
+    return 0 # 成功加载
+  else
+    log_message WARN "配置文件 $CONFIG_FILE 不存在。"
+    return 1 # 文件不存在
+  fi
+}
+
+# 函数：安装并配置 DDNS
+install_ddns() {
+  log_message INFO "正在启动安装向导..."
+  echo -e "${CYAN}🚀 欢迎使用 CloudFlare DDNS 安装向导 🚀${NC}"
+  echo -e "${YELLOW}此向导将帮助您配置 DDNS 服务并设置定时任务。${NC}"
+  
+  init_dirs # 确保目录存在
+  interactive_config # 交互式配置
+  add_cron_job # 添加定时任务
+  
+  log_message SUCCESS "DDNS 安装和配置完成。"
+  echo -e "${GREEN}✅ CloudFlare DDNS 已成功安装并配置。${NC}"
+  echo -e "${BLUE}您可以随时通过运行此脚本并选择菜单选项来修改配置。${NC}"
+  read -p "按回车键返回主菜单..."
+}
+
+# 函数：修改 DDNS 配置
+modify_config() {
+  log_message INFO "正在启动修改配置向导..."
+  echo -e "${CYAN}⚙️ 修改 CloudFlare DDNS 配置 ⚙️${NC}"
+  
+  init_dirs # 确保目录存在
+  interactive_config # 交互式配置
+  
+  log_message SUCCESS "DDNS 配置修改完成。"
+  echo -e "${GREEN}✅ CloudFlare DDNS 配置已成功修改。${NC}"
+  read -p "按回车键返回主菜单..."
+}
 
 # 函数：添加定时任务
 add_cron_job() {
@@ -260,13 +415,319 @@ add_cron_job() {
   fi
 }
 
-# (remove_cron_job, uninstall_ddns 函数保持不变)
+# 函数：删除定时任务
+remove_cron_job() {
+  log_message INFO "正在删除现有定时任务..."
+  echo -e "${YELLOW}正在删除现有定时任务...${NC}"
+  local temp_cron_file=$(mktemp)
+  crontab -l 2>/dev/null | grep -v "$CRON_JOB_ID" > "$temp_cron_file"
+  crontab "$temp_cron_file"
+  rm "$temp_cron_file"
+  if [ $? -eq 0 ]; then
+    log_message SUCCESS "现有定时任务已成功删除。"
+    echo -e "${GREEN}✅ 现有定时任务已删除。${NC}"
+  else
+    log_message ERROR "删除现有定时任务失败。"
+    echo -e "${RED}❌ 错误: 删除现有定时任务失败。${NC}"
+  fi
+}
+
+# 函数：卸载 DDNS
+uninstall_ddns() {
+  log_message INFO "正在启动卸载向导..."
+  echo -e "${RED}🗑️ 卸载 CloudFlare DDNS 🗑️${NC}"
+  read -rp "$(echo -e "${YELLOW}您确定要卸载 DDNS 服务吗？这将删除所有配置、日志和定时任务。(y/n): ${NC}")" confirm_uninstall
+
+  if [[ "$confirm_uninstall" =~ ^[yY]$ ]]; then
+    remove_cron_job
+
+    log_message INFO "正在删除配置目录: $CONFIG_DIR"
+    if [ -d "$CONFIG_DIR" ]; then
+      if ! rm -rf "$CONFIG_DIR"; then
+        log_message ERROR "删除配置目录失败: $CONFIG_DIR"
+        echo -e "${RED}错误: 删除配置目录失败: ${CONFIG_DIR}${NC}"
+      else
+        log_message SUCCESS "配置目录已删除。"
+        echo -e "${GREEN}✅ 配置目录已删除: ${CONFIG_DIR}${NC}"
+      fi
+    fi
+
+    log_message INFO "正在删除数据目录: $DATA_DIR"
+    if [ -d "$DATA_DIR" ]; then
+      if ! rm -rf "$DATA_DIR"; then
+        log_message ERROR "删除数据目录失败: $DATA_DIR"
+        echo -e "${RED}错误: 删除数据目录失败: ${DATA_DIR}${NC}"
+      else
+        log_message SUCCESS "数据目录已删除。"
+        echo -e "${GREEN}✅ 数据目录已删除: ${DATA_DIR}${NC}"
+      fi
+    fi
+
+    log_message INFO "正在删除日志文件: $LOG_FILE"
+    if [ -f "$LOG_FILE" ]; then
+      if ! rm "$LOG_FILE"; then
+        log_message ERROR "删除日志文件失败: $LOG_FILE"
+        echo -e "${RED}错误: 删除日志文件失败: ${LOG_FILE}${NC}"
+      else
+        log_message SUCCESS "日志文件已删除。"
+        echo -e "${GREEN}✅ 日志文件已删除: ${LOG_FILE}${NC}"
+      fi
+    fi
+    
+    log_message SUCCESS "CloudFlare DDNS 卸载完成。"
+    echo -e "${GREEN}✅ CloudFlare DDNS 已成功卸载。${NC}"
+  else
+    log_message INFO "用户取消了卸载。"
+    echo -e "${YELLOW}卸载已取消。${NC}"
+  fi
+  read -p "按回车键返回主菜单..."
+}
 
 # =====================================================================
 # 核心 DDNS 逻辑函数
 # =====================================================================
 
-# (send_tg_notification, get_wan_ip, update_record, process_record_type 函数保持不变)
+# 函数：发送 Telegram 通知
+send_tg_notification() {
+  local message="$1"
+  if [[ -n "$TG_BOT_TOKEN" && -n "$TG_CHAT_ID" ]]; then
+    log_message INFO "正在发送 Telegram 通知..."
+    curl -s -X POST \
+      -H 'Content-Type: application/json' \
+      -d "{\"chat_id\": \"$TG_CHAT_ID\", \"text\": \"$message\", \"parse_mode\": \"Markdown\"}" \
+      "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      log_message INFO "Telegram 通知发送成功。"
+    else
+      log_message ERROR "Telegram 通知发送失败。"
+    fi
+  fi
+}
+
+# 函数：获取公网 IPv4 地址
+get_wan_ip_v4() {
+  log_message INFO "正在尝试获取 IPv4 地址..."
+  for site in "${WANIPSITE_v4[@]}"; do
+    local ip=$(curl -s -4 "$site" | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -n 1)
+    if [[ -n "$ip" && "$ip" != "0.0.0.0" ]]; then
+      log_message INFO "通过 $site 获取到 IPv4 地址: $ip"
+      echo "$ip"
+      return 0
+    fi
+  done
+  log_message ERROR "未能获取到 IPv4 地址。"
+  return 1
+}
+
+# 函数：获取公网 IPv6 地址
+get_wan_ip_v6() {
+  log_message INFO "正在尝试获取 IPv6 地址..."
+  # 确保系统支持 IPv6 且有 IPv6 路由
+  if ! ip -6 route show default > /dev/null 2>&1; then
+      log_message WARN "系统没有默认 IPv6 路由，可能无法获取 IPv6 地址。"
+      return 1 # 没有 IPv6 路由，直接返回失败
+  fi
+
+  for site in "${WANIPSITE_v6[@]}"; do
+    local ip=$(curl -s -6 "$site" | grep -Eo '([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}' | head -n 1)
+    if [[ -n "$ip" && "$ip" != "::" ]]; then
+      log_message INFO "通过 $site 获取到 IPv6 地址: $ip"
+      echo "$ip"
+      return 0
+    fi
+  done
+  log_message ERROR "未能获取到 IPv6 地址。"
+  return 1
+}
+
+# 函数：更新 DNS 记录
+update_record() {
+  local record_type="$1"
+  local current_ip="$2"
+  local ip_file="$DATA_DIR/${CFRECORD_NAME}_${record_type}.ip"
+  local record_id_file="$DATA_DIR/${CFRECORD_NAME}_${record_type}.id"
+  local record_id=""
+  local zone_id=""
+  
+  log_message INFO "正在处理 ${CFRECORD_NAME} (类型: $record_type)..."
+
+  # 加载上次缓存的 IP 地址和记录 ID
+  if [ -f "$ip_file" ]; then
+    local last_ip=$(cat "$ip_file")
+  else
+    local last_ip=""
+  fi
+  if [ -f "$record_id_file" ]; then
+    record_id=$(cat "$record_id_file")
+  else
+    record_id=""
+  fi
+
+  # 检查是否需要更新
+  if [[ "$last_ip" == "$current_ip" ]] && [ "$FORCE" == false ]; then
+    log_message INFO "IP ($record_type) 未改变 ($current_ip)。无需更新。"
+    echo -e "${BLUE}IP ($record_type) 未改变 ($current_ip)。无需更新。${NC}"
+    return 0
+  fi
+
+  echo -e "${YELLOW}IP ($record_type) 已改变或强制更新 ($last_ip -> $current_ip)。正在更新...${NC}"
+  log_message INFO "IP ($record_type) 已改变或强制更新 ($last_ip -> $current_ip)。"
+
+  # 获取 Zone ID
+  if [[ -z "$zone_id" ]]; then
+    log_message INFO "正在获取 Zone ID..."
+    zone_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=$CFZONE_NAME" \
+      -H "X-Auth-Email: $CFUSER" \
+      -H "X-Auth-Key: $CFKEY" \
+      -H "Content-Type: application/json")
+
+    zone_id=$(echo "$zone_response" | jq -r '.result[0].id' 2>/dev/null)
+    
+    if [ -z "$zone_id" ] || [ "$zone_id" == "null" ]; then
+      log_message ERROR "获取 Zone ID 失败。响应: $zone_response"
+      echo -e "${RED}错误: 获取 Zone ID 失败。请检查 CFZONE_NAME 或 API 密钥。${NC}"
+      local message="❌ *Cloudflare DDNS 错误* ❌
+
+*获取 Zone ID 失败!*
+域名: \`$CFZONE_NAME\`
+时间: \`$(date +"%Y-%m-%d %H:%M:%S %Z")\`
+
+⚠️ 请检查您的 *CFZONE_NAME* 和 *API 密钥*。"
+      send_tg_notification "$message"
+      return 1
+    fi
+    log_message INFO "Zone ID: $zone_id"
+  fi
+
+  # 查找现有记录或创建新记录
+  if [[ -z "$record_id" ]]; then
+    log_message INFO "正在查找现有记录或创建新记录..."
+    record_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records?type=$record_type&name=$CFRECORD_NAME" \
+      -H "X-Auth-Email: $CFUSER" \
+      -H "X-Auth-Key: $CFKEY" \
+      -H "Content-Type: application/json")
+
+    record_id=$(echo "$record_response" | jq -r '.result[0].id' 2>/dev/null)
+    
+    if [ -z "$record_id" ] || [ "$record_id" == "null" ]; then
+      log_message INFO "未找到现有记录，尝试创建新记录。"
+      echo -e "${YELLOW}未找到现有记录，正在创建新记录...${NC}"
+      create_response=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records" \
+        -H "X-Auth-Email: $CFUSER" \
+        -H "X-Auth-Key: $CFKEY" \
+        -H "Content-Type: application/json" \
+        --data "{\"type\":\"$record_type\",\"name\":\"$CFRECORD_NAME\",\"content\":\"$current_ip\",\"ttl\":$CFTTL,\"proxied\":true}") # 默认开启代理
+      
+      record_id=$(echo "$create_response" | jq -r '.result.id' 2>/dev/null)
+      local success=$(echo "$create_response" | jq -r '.success' 2>/dev/null)
+
+      if [[ "$success" == "true" && -n "$record_id" && "$record_id" != "null" ]]; then
+        log_message SUCCESS "成功创建 DNS 记录 (${record_type}): $CFRECORD_NAME -> $current_ip"
+        echo -e "${GREEN}✅ 成功创建 DNS 记录 (${record_type}): ${CFRECORD_NAME} -> ${current_ip}${NC}"
+        echo "$record_id" > "$record_id_file" # 缓存记录 ID
+        echo "$current_ip" > "$ip_file"       # 缓存新 IP
+        local message="✅ *Cloudflare DDNS 更新成功* ✅
+
+*记录类型:* \`$record_type\`
+*域名:* \`$CFRECORD_NAME\`
+*新 IP:* \`$current_ip\`
+*操作:* 创建
+时间: \`$(date +"%Y-%m-%d %H:%M:%S %Z")\`"
+        send_tg_notification "$message"
+        return 0
+      else
+        log_message ERROR "创建 DNS 记录失败。响应: $create_response"
+        echo -e "${RED}错误: 创建 DNS 记录失败。响应: ${create_response}${NC}"
+        local message="❌ *Cloudflare DDNS 错误* ❌
+
+*创建 DNS 记录失败!*
+记录类型: \`$record_type\`
+域名: \`$CFRECORD_NAME\`
+目标 IP: \`$current_ip\`
+时间: \`$(date +"%Y-%m-%d %H:%M:%S %Z")\`
+
+⚠️ 请检查 Cloudflare 响应。"
+        send_tg_notification "$message"
+        return 1
+      fi
+    else
+      log_message INFO "找到现有记录 ID: $record_id"
+      echo "$record_id" > "$record_id_file" # 缓存记录 ID
+    fi
+  fi
+
+  # 更新现有记录
+  log_message INFO "正在更新现有 DNS 记录 (${record_type}) ID: $record_id ..."
+  update_response=$(curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records/$record_id" \
+    -H "X-Auth-Email: $CFUSER" \
+    -H "X-Auth-Key: $CFKEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"type\":\"$record_type\",\"name\":\"$CFRECORD_NAME\",\"content\":\"$current_ip\",\"ttl\":$CFTTL,\"proxied\":true}") # 默认开启代理
+
+  local success=$(echo "$update_response" | jq -r '.success' 2>/dev/null)
+
+  if [[ "$success" == "true" ]]; then
+    log_message SUCCESS "成功更新 DNS 记录 (${record_type}): $CFRECORD_NAME -> $current_ip"
+    echo -e "${GREEN}✅ 成功更新 DNS 记录 (${record_type}): ${CFRECORD_NAME} -> ${current_ip}${NC}"
+    echo "$current_ip" > "$ip_file" # 缓存新 IP
+    local message="✅ *Cloudflare DDNS 更新成功* ✅
+
+*记录类型:* \`$record_type\`
+*域名:* \`$CFRECORD_NAME\`
+*新 IP:* \`$current_ip\`
+*操作:* 更新
+时间: \`$(date +"%Y-%m-%d %H:%M:%S %Z")\`"
+    send_tg_notification "$message"
+    return 0
+  else
+    log_message ERROR "更新 DNS 记录失败。响应: $update_response"
+    echo -e "${RED}错误: 更新 DNS 记录失败。响应: ${update_response}${NC}"
+    local message="❌ *Cloudflare DDNS 错误* ❌
+
+*更新 DNS 记录失败!*
+记录类型: \`$record_type\`
+域名: \`$CFRECORD_NAME\`
+目标 IP: \`$current_ip\`
+时间: \`$(date +"%Y-%m-%d %H:%M:%S %Z")\`
+
+⚠️ 请检查 Cloudflare 响应。"
+    send_tg_notification "$message"
+    return 1
+  fi
+}
+
+# 函数：根据记录类型处理更新
+process_record_type() {
+  local type_to_process="$1"
+  local current_ip=""
+
+  case "$type_to_process" in
+    "A")
+      current_ip=$(get_wan_ip_v4)
+      if [ -z "$current_ip" ]; then
+        log_message ERROR "未能获取 IPv4 地址，跳过 A 记录更新。"
+        echo -e "${RED}❌ 未能获取 IPv4 地址，跳过 A 记录更新。${NC}"
+        return 1
+      fi
+      update_record "A" "$current_ip"
+      ;;
+    "AAAA")
+      current_ip=$(get_wan_ip_v6)
+      if [ -z "$current_ip" ]; then
+        log_message WARN "未能获取 IPv6 地址，跳过 AAAA 记录更新。"
+        echo -e "${YELLOW}⚠️ 未能获取 IPv6 地址，跳过 AAAA 记录更新。${NC}"
+        # IPv6 获取失败不作为致命错误，只记录警告
+        return 0 
+      fi
+      update_record "AAAA" "$current_ip"
+      ;;
+    *)
+      log_message ERROR "不支持的记录类型: $type_to_process"
+      echo -e "${RED}❌ 不支持的记录类型: ${type_to_process}${NC}"
+      return 1
+      ;;
+  esac
+}
 
 # =====================================================================
 # 函数：执行 DDNS 更新
@@ -339,7 +800,44 @@ run_ddns_update() {
   fi
 }
 
-# (install_ddns, modify_config, show_current_config, view_logs 函数保持不变)
+# 函数：查看当前配置
+show_current_config() {
+  log_message INFO "正在显示当前配置..."
+  clear
+  echo -e "${CYAN}📋 当前 DDNS 配置 📋${NC}"
+  if load_config; then
+    echo -e "${GREEN}-------------------------------------------${NC}"
+    echo -e "${BLUE}Cloudflare API 密钥: ${NC}${CFKEY:0:5}**********************"
+    echo -e "${BLUE}Cloudflare 账户邮箱: ${NC}${CFUSER}"
+    echo -e "${BLUE}域名区域:           ${NC}${CFZONE_NAME}"
+    echo -e "${BLUE}记录名称:           ${NC}${CFRECORD_NAME}"
+    echo -e "${BLUE}记录类型:           ${NC}${CFRECORD_TYPE}"
+    echo -e "${BLUE}TTL:                ${NC}${CFTTL} 秒"
+    echo -e "${BLUE}强制更新模式:       ${NC}${FORCE}"
+    echo -e "${BLUE}Telegram Bot Token: ${NC}${TG_BOT_TOKEN:0:5}**********************"
+    echo -e "${BLUE}Telegram Chat ID:   ${NC}${TG_CHAT_ID}"
+    echo -e "${GREEN}-------------------------------------------${NC}"
+  else
+    echo -e "${RED}配置文件 ${CONFIG_FILE} 不存在或加载失败。${NC}"
+    echo -e "${YELLOW}请先运行 '安装并配置 DDNS' 来设置。${NC}"
+  fi
+  read -p "按回车键返回主菜单..."
+}
+
+# 函数：查看日志
+view_logs() {
+  log_message INFO "正在显示最近的日志..."
+  clear
+  echo -e "${CYAN}📜 DDNS 日志 (最近 50 行) 📜${NC}"
+  echo -e "${GREEN}-------------------------------------------${NC}"
+  if [ -f "$LOG_FILE" ]; then
+    tail -n 50 "$LOG_FILE" | sed 's/\x1b\[[0-9;]*m//g' # 移除颜色代码
+  else
+    echo -e "${YELLOW}日志文件 ${LOG_FILE} 不存在。${NC}"
+  fi
+  echo -e "${GREEN}-------------------------------------------${NC}"
+  read -p "按回车键返回主菜单..."
+}
 
 
 # =====================================================================
@@ -391,8 +889,8 @@ if [ $# -gt 0 ]; then
       log_message INFO "命令行参数: uninstall"
       uninstall_ddns
       exit 0
-      ;;\
-    *)\
+      ;;
+    *)
       log_message ERROR "无效的命令行参数: $1"
       echo -e "${RED}❌ 无效参数: ${1}${NC}"
       echo -e "${YELLOW}用法: ${NC}$(basename "$0") ${GREEN}[update|install|modify|uninstall]${NC}"
