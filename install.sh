@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Cloudflare DDNS 安装脚本 - 优化版 (适用于 curl | bash 模式)
+# Cloudflare DDNS 安装脚本
 
 # 严格的错误处理
 set -o errexit     # 任何命令失败时立即退出。
@@ -124,7 +124,6 @@ perform_installation() {
   install_log SUCCESS "DDNS 脚本交互式安装完成。"
 
   echo -e "${GREEN}🎉 Cloudflare DDNS 已成功安装和配置！${NC}"
-  echo -e "${GREEN}您可以通过运行 '${BLUE}sudo $DDNS_SCRIPT_PATH${NC}' 来管理它。${NC}"
   install_log SUCCESS "安装成功完成。"
 }
 
