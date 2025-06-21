@@ -26,7 +26,7 @@
 ### 一键安装
 
 ```bash
-wget -N raw.githubusercontent.com/Kov1Ki/kov1-ddns/main/cf-ddns.sh && chmod +x cf-ddns.sh && ./cf-ddns.sh
+wget -N https://raw.githubusercontent.com/Kov1Ki/kov1-ddns/main/cf-ddns.sh && chmod +x cf-ddns.sh && ./cf-ddns.sh
 ```
 
 ## 💡 使用指南
