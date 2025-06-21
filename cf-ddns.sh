@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cloudflare DDNS 管理脚本 (模块化配置最终版 - 优化后)
+# Cloudflare DDNS 管理脚本 
 
 # 严格的错误处理：
 set -o errexit  # 任何命令失败时立即退出。
