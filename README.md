@@ -1,4 +1,4 @@
-# 🚀 Cloudflare DDNS 管理脚本 (cf-ddns.sh) 🚀
+# 🚀 Cloudflare DDNS 管理脚本  🚀
 
 一个轻量、自动化的 Bash 脚本，用于通过 Cloudflare API 更新您的动态 DNS 记录（IPv4 A 和 IPv6 AAAA）。
 
@@ -31,24 +31,24 @@ wget -N raw.githubusercontent.com/Kov1Ki/kov1-ddns/main/cf-ddns.sh && chmod +x
 
 ## 💡 使用指南
 
-安装后，输入 sudo d 或 sudo cf-ddns.sh 进入主菜单。
+安装后，输入 `sudo d` 或 `sudo cf-ddns.sh` 进入主菜单。
 
-手动更新: sudo d update
-查看日志: sudo d log
-卸载: 在主菜单选择 7. 🗑️ 卸载 DDNS。
+手动更新: `sudo d update`
+查看日志: `sudo d log`
+卸载: 在主菜单选择 `7. 🗑️ 卸载 DDNS`。
 
 ## ⚙️ 配置说明
 
-配置文件位于 /etc/cf-ddns/config.conf。建议通过脚本菜单修改。
+配置文件位于 `/etc/cf-ddns/config.conf`。建议通过脚本菜单修改。
 
-CFKEY: 您的 Cloudflare Global API Key。
-CFUSER: 您的 Cloudflare 账户邮箱。
-CFZONE_NAME: 您的主域名 (如 yourdomain.com)。
-CFRECORD_NAME_V4/CFRECORD_NAME_V6: DNS 记录的主机名 (@ 代表主域名)。
-ENABLE_IPV4/ENABLE_IPV6: 是否启用 (true/false)。
-TG_BOT_TOKEN/TG_CHAT_ID: Telegram Bot 通知设置 。
+`CFKEY`: 您的 Cloudflare Global API Key。
+`CFUSER`: 您的 Cloudflare 账户邮箱。
+`CFZONE_NAME`: 您的主域名 (如 yourdomain.com)。
+`CFRECORD_NAME_V4`/`CFRECORD_NAME_V6`: DNS 记录的主机名 (`@` 代表主域名)。
+`ENABLE_IPV4`/`ENABLE_IPV6`: 是否启用 (`true`/`false`)。
+`TG_BOT_TOKEN`/`TG_CHAT_ID`: Telegram Bot 通知设置 。
 
 ## 🔍 故障排除
 
-jq 命令未找到: 请确保安装了 jq。
-IP 未更新或报错: 检查日志文件 /var/log/cf-ddns.log 获取详细信息。
+`jq` 命令未找到: 请确保安装了 `jq`。
+IP 未更新或报错: 检查日志文件 `/var/log/cf-ddns.log` 获取详细信息。
