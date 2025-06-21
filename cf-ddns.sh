@@ -79,7 +79,7 @@ log_message() {
 show_main_menu() {
   clear
   echo -e "${CYAN}======================================================${NC}"
-  echo -e "${BLUE}     🚀 CloudFlare DDNS 管理脚本 (模块化配置版) 🚀     ${NC}"
+  echo -e "${BLUE}     🚀 CloudFlare DDNS 管理脚本  🚀     ${NC}"
   echo -e "${CYAN}======================================================${NC}"
   echo -e "${GREEN} 1. ✨ 安装并配置 DDNS${NC}"
   echo -e "${GREEN} 2. ⚙️ 修改 DDNS 配置${NC}"
