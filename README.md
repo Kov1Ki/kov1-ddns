@@ -33,8 +33,8 @@ wget -N https://raw.githubusercontent.com/Kov1Ki/kov1-ddns/main/cf-ddns.sh && ch
 
 安装后，输入 `sudo d` 或 `sudo cf-ddns.sh` 进入主菜单。
 
-* **手动更新**: `sudo d update`
-* **查看日志**: `sudo d log`
+* **手动更新**: `sudo ddns update`
+* **查看日志**: `sudo dddns log`
 * **卸载**: 在主菜单选择 `7. 🗑️ 卸载 DDNS`。
 
 ## ⚙️ 配置说明
