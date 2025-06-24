@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Cloudflare DDNS 管理脚本 (功能完整优化版)
-# 版本: 2.2
+# 版本: 2.3
+# 更新日志:
+# v2.3: 安装时新增 'ddns' 快捷键。
+# v2.2: 恢复所有功能的完整交互细节。
+# v2.1: 引入交互式定时任务频率选择功能。
+# v2.0: 重大安全和效率优化 (安全配置加载, API ID缓存)。
 
 # 严格的错误处理：
 set -o errexit  # 任何命令失败时立即退出。
@@ -75,7 +80,7 @@ log_message() {
 show_main_menu() {
   clear
   echo -e "${CYAN}======================================================${NC}"
-  echo -e "${BLUE}     🚀 CloudFlare DDNS 管理脚本 🚀     ${NC}"
+  echo -e "${BLUE}     🚀 CloudFlare DDNS 管理脚本 (完整优化版 v2.3) 🚀     ${NC}"
   echo -e "${CYAN}======================================================${NC}"
   echo -e "${GREEN} 1. ✨ 安装并配置 DDNS${NC}"
   echo -e "${GREEN} 2. ⚙️ 修改 DDNS 配置${NC}"
@@ -211,7 +216,7 @@ run_full_config_wizard() {
 save_config() {
   log_message INFO "正在保存配置到 $CONFIG_FILE..."
   {
-    echo "# CloudFlare DDNS 配置文件 (v2.2)"; echo "# 生成时间: $(TZ="$TIMEZONE" date)"; echo ""
+    echo "# CloudFlare DDNS 配置文件 (v2.3)"; echo "# 生成时间: $(TZ="$TIMEZONE" date)"; echo ""
     echo "CFKEY='$CFKEY'"; echo "CFUSER='$CFUSER'"; echo "CFZONE_NAME='$CFZONE_NAME'"
     echo "CFTTL=$CFTTL"; echo "FORCE=$FORCE"; echo "TIMEZONE='$TIMEZONE'"; echo ""
     echo "# IPv4 (A 记录) 配置"; echo "ENABLE_IPV4=${ENABLE_IPV4}"; echo "CFRECORD_NAME_V4='${CFRECORD_NAME_V4}'"; echo ""
@@ -281,9 +286,14 @@ uninstall_ddns() {
   clear
   read -p "$(echo -e "${RED}警告: 您确定要完全卸载吗? [y/N]: ${NC}")" confirm
   if [[ ! "${confirm,,}" =~ ^y$ ]]; then echo -e "${YELLOW}取消卸载。${NC}"; return; fi
-  log_message INFO "开始完全卸载DDNS..."; (crontab -l 2>/dev/null | grep -v "$CRON_JOB_ID") | crontab -
-  rm -rf "$DATA_DIR" "$CONFIG_DIR" "$LOG_FILE"; rm -f "/usr/local/bin/cf-ddns" "/usr/local/bin/d"
-  log_message SUCCESS "DDNS 已完全卸载。"; echo -e "\n${GREEN}🎉 Cloudflare DDNS 已完全卸载。${NC}"; exit 0
+  log_message INFO "开始完全卸载DDNS...";
+  (crontab -l 2>/dev/null | grep -v "$CRON_JOB_ID") | crontab -
+  rm -rf "$DATA_DIR" "$CONFIG_DIR" "$LOG_FILE"
+  # 【已更新】确保删除所有快捷键
+  rm -f "/usr/local/bin/cf-ddns" "/usr/local/bin/d" "/usr/local/bin/ddns"
+  log_message SUCCESS "DDNS 已完全卸载。";
+  echo -e "\n${GREEN}🎉 Cloudflare DDNS 已完全卸载。${NC}";
+  exit 0
 }
 
 show_modify_menu() {
@@ -311,10 +321,21 @@ modify_config() {
 install_ddns() {
   clear; log_message INFO "启动 DDNS 安装。"
   init_dirs; run_full_config_wizard; manage_cron_job
-  local script_path dest_path="/usr/local/bin/cf-ddns" shortcut_link="/usr/local/bin/d"
-  script_path=$(realpath "$0"); cp -f "$script_path" "$dest_path" && chmod 755 "$dest_path"; ln -sf "$dest_path" "$shortcut_link"
-  log_message SUCCESS "脚本已安装到: ${dest_path}, 并创建快捷方式 'd'。"
-  echo -e "${GREEN}✅ 脚本已安装到 ${dest_path} 并创建快捷方式 'd'。${NC}"
+  
+  local script_path dest_path="/usr/local/bin/cf-ddns"
+  # 【已更新】定义所有快捷键
+  local shortcut_link_d="/usr/local/bin/d"
+  local shortcut_link_ddns="/usr/local/bin/ddns"
+
+  script_path=$(realpath "$0");
+  cp -f "$script_path" "$dest_path" && chmod 755 "$dest_path"
+  
+  # 【已更新】创建所有快捷键
+  ln -sf "$dest_path" "$shortcut_link_d"
+  ln -sf "$dest_path" "$shortcut_link_ddns"
+  
+  log_message SUCCESS "脚本已安装到: ${dest_path}, 并创建快捷方式 'd' 和 'ddns'。"
+  echo -e "${GREEN}✅ 脚本已安装到 ${dest_path} 并创建快捷方式 'd' 和 'ddns'。${NC}"
   echo -e "${BLUE}⚡ 正在运行首次更新...${NC}"; run_ddns_update
   log_message INFO "安装完成。"; echo -e "\n${GREEN}🎉 安装完成!${NC}"; read -p "按回车键返回主菜单..."
 }
