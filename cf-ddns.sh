@@ -1,24 +1,21 @@
 #!/usr/bin/env bash
 # Cloudflare DDNS 管理脚本 (功能完整优化版)
-# 版本: 2.3
-# 更新日志:
-# v2.3: 安装时新增 'ddns' 快捷键。
-# v2.2: 恢复所有功能的完整交互细节。
-# v2.1: 引入交互式定时任务频率选择功能。
-# v2.0: 重大安全和效率优化 (安全配置加载, API ID缓存)。
+# 版本: 2.5
+
 
 # 严格的错误处理：
-set -o errexit  # 任何命令失败时立即退出。
-set -o nounset  # 使用未定义变量时报错。
-set -o pipefail # 管道中任何命令失败时整个管道失败。
+set -o errexit
+set -o nounset
+set -o pipefail
 
-# --- 配置路径 ---
+# --- 全局变量和配置路径 ---
 CONFIG_DIR="/etc/cf-ddns"
 DATA_DIR="/var/lib/cf-ddns"
 CONFIG_FILE="$CONFIG_DIR/config.conf"
 LOG_FILE="/var/log/cf-ddns.log"
-CRON_JOB_ID="CLOUDFLARE_DDNS_JOB" # 定时任务的唯一标识符
-DEFAULT_CRON_SCHEDULE="*/2 * * * *" # 默认定时任务频率 (每2分钟)
+CRON_JOB_ID="CLOUDFLARE_DDNS_JOB"
+DEFAULT_CRON_SCHEDULE="*/2 * * * *"
+INSTALLED_SCRIPT_PATH="/usr/local/bin/cf-ddns"
 
 # --- 默认配置参数 ---
 CFKEY=""
@@ -34,7 +31,7 @@ TG_BOT_TOKEN=""
 TG_CHAT_ID=""
 TIMEZONE="Asia/Shanghai"
 
-# 设置时区 (将在加载配置后被覆盖)
+# 设置时区
 export TZ="${TIMEZONE}"
 
 # --- 公网 IP 检测服务 ---
@@ -69,10 +66,8 @@ log_message() {
   echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
   local level_color="${NC}"
   case "$level" in
-    "INFO") level_color="${BLUE}" ;;
-    "WARN") level_color="${YELLOW}" ;;
-    "ERROR") level_color="${RED}" ;;
-    "SUCCESS") level_color="${GREEN}" ;;
+    "INFO") level_color="${BLUE}" ;; "WARN") level_color="${YELLOW}" ;;
+    "ERROR") level_color="${RED}" ;; "SUCCESS") level_color="${GREEN}" ;;
   esac
   echo -e "${level_color}$(TZ="$TIMEZONE" date +"%H:%M:%S") [$level] $message${NC}" >&2
 }
@@ -80,9 +75,10 @@ log_message() {
 show_main_menu() {
   clear
   echo -e "${CYAN}======================================================${NC}"
-  echo -e "${BLUE}     🚀 CloudFlare DDNS 管理脚本 (完整优化版 v2.3) 🚀     ${NC}"
+  echo -e "${BLUE}     🚀 CloudFlare DDNS 管理脚本 🚀     ${NC}"
   echo -e "${CYAN}======================================================${NC}"
-  echo -e "${GREEN} 1. ✨ 安装并配置 DDNS${NC}"
+  # 【已更新】修改菜单文本
+  echo -e "${GREEN} 1. ✨ 更新/安装 DDNS${NC}"
   echo -e "${GREEN} 2. ⚙️ 修改 DDNS 配置${NC}"
   echo -e "${GREEN} 3. 📋 查看当前配置${NC}"
   echo -e "${GREEN} 4. ⚡ 手动运行更新${NC}"
@@ -210,13 +206,13 @@ run_full_config_wizard() {
 }
 
 # =====================================================================
-# 主流程函数
+# 主流程与核心功能函数
 # =====================================================================
 
 save_config() {
   log_message INFO "正在保存配置到 $CONFIG_FILE..."
   {
-    echo "# CloudFlare DDNS 配置文件 (v2.3)"; echo "# 生成时间: $(TZ="$TIMEZONE" date)"; echo ""
+    echo "# CloudFlare DDNS 配置文件 (v2.5)"; echo "# 生成时间: $(TZ="$TIMEZONE" date)"; echo ""
     echo "CFKEY='$CFKEY'"; echo "CFUSER='$CFUSER'"; echo "CFZONE_NAME='$CFZONE_NAME'"
     echo "CFTTL=$CFTTL"; echo "FORCE=$FORCE"; echo "TIMEZONE='$TIMEZONE'"; echo ""
     echo "# IPv4 (A 记录) 配置"; echo "ENABLE_IPV4=${ENABLE_IPV4}"; echo "CFRECORD_NAME_V4='${CFRECORD_NAME_V4}'"; echo ""
@@ -273,9 +269,8 @@ manage_cron_job() {
     7) echo -e "${YELLOW}操作已取消。${NC}"; return 0 ;; *) echo -e "${RED}❌ 无效选项。${NC}"; sleep 1; return 1 ;;
   esac
   if [[ -n "$new_schedule" ]]; then
-    local script_path; script_path=$(realpath "$0")
     (crontab -l 2>/dev/null | grep -v "$CRON_JOB_ID") | crontab -
-    local cron_command="$new_schedule $script_path update >> '$LOG_FILE' 2>&1 # $CRON_JOB_ID"
+    local cron_command="$new_schedule $INSTALLED_SCRIPT_PATH update >> '$LOG_FILE' 2>&1 # $CRON_JOB_ID"
     (crontab -l 2>/dev/null; echo "$cron_command") | crontab -
     log_message SUCCESS "定时任务已更新为: $new_schedule"; echo -e "${GREEN}✅ 定时任务已成功更新为: ${new_schedule}${NC}"
   fi
@@ -286,13 +281,30 @@ uninstall_ddns() {
   clear
   read -p "$(echo -e "${RED}警告: 您确定要完全卸载吗? [y/N]: ${NC}")" confirm
   if [[ ! "${confirm,,}" =~ ^y$ ]]; then echo -e "${YELLOW}取消卸载。${NC}"; return; fi
+  
   log_message INFO "开始完全卸载DDNS...";
+  
   (crontab -l 2>/dev/null | grep -v "$CRON_JOB_ID") | crontab -
+  log_message INFO "已移除定时任务。"
+  
   rm -rf "$DATA_DIR" "$CONFIG_DIR" "$LOG_FILE"
-  # 【已更新】确保删除所有快捷键
-  rm -f "/usr/local/bin/cf-ddns" "/usr/local/bin/d" "/usr/local/bin/ddns"
-  log_message SUCCESS "DDNS 已完全卸载。";
-  echo -e "\n${GREEN}🎉 Cloudflare DDNS 已完全卸载。${NC}";
+  log_message INFO "已删除数据、配置和日志目录/文件。"
+  
+  rm -f "$INSTALLED_SCRIPT_PATH" "/usr/local/bin/d" "/usr/local/bin/ddns"
+  log_message INFO "已删除主程序脚本和所有快捷方式。"
+  
+  log_message SUCCESS "DDNS 已完全卸载。"
+  echo -e "\n${GREEN}🎉 Cloudflare DDNS 已完全卸载。${NC}"
+  
+  local original_script_path
+  original_script_path=$(realpath "$0")
+  echo -e "\n${YELLOW}======================================================${NC}"
+  echo -e "${YELLOW}❕ 请注意: 卸载程序已完成。${NC}"
+  echo -e "${YELLOW}❕ 如果您最初用于运行此脚本的文件还在(例如在/tmp或下载目录中)，"
+  echo -e "${YELLOW}❕ 您现在可以安全地手动删除它。路径为:${NC}"
+  echo -e "${CYAN}   $original_script_path${NC}"
+  echo -e "${YELLOW}======================================================${NC}"
+  
   exit 0
 }
 
@@ -318,26 +330,36 @@ modify_config() {
   done
 }
 
+# 【已更新】此函数现在也负责执行更新，而不仅仅是安装
 install_ddns() {
-  clear; log_message INFO "启动 DDNS 安装。"
-  init_dirs; run_full_config_wizard; manage_cron_job
-  
-  local script_path dest_path="/usr/local/bin/cf-ddns"
-  # 【已更新】定义所有快捷键
-  local shortcut_link_d="/usr/local/bin/d"
-  local shortcut_link_ddns="/usr/local/bin/ddns"
+  clear; log_message INFO "启动 DDNS 安装/更新流程。"
+  # 如果是首次安装，则运行完整向导
+  if [ ! -f "$CONFIG_FILE" ]; then
+      run_full_config_wizard
+  else
+      echo -e "${GREEN}检测到现有配置，将直接更新脚本文件...${NC}"
+      sleep 1
+  fi
 
-  script_path=$(realpath "$0");
-  cp -f "$script_path" "$dest_path" && chmod 755 "$dest_path"
+  # 执行脚本文件的复制和权限设置
+  local current_script_path
+  current_script_path=$(realpath "$0")
+  cp -f "$current_script_path" "$INSTALLED_SCRIPT_PATH" && chmod 755 "$INSTALLED_SCRIPT_PATH"
   
-  # 【已更新】创建所有快捷键
-  ln -sf "$dest_path" "$shortcut_link_d"
-  ln -sf "$dest_path" "$shortcut_link_ddns"
+  # 创建快捷键
+  ln -sf "$INSTALLED_SCRIPT_PATH" "/usr/local/bin/d"
+  ln -sf "$INSTALLED_SCRIPT_PATH" "/usr/local/bin/ddns"
   
-  log_message SUCCESS "脚本已安装到: ${dest_path}, 并创建快捷方式 'd' 和 'ddns'。"
-  echo -e "${GREEN}✅ 脚本已安装到 ${dest_path} 并创建快捷方式 'd' 和 'ddns'。${NC}"
-  echo -e "${BLUE}⚡ 正在运行首次更新...${NC}"; run_ddns_update
-  log_message INFO "安装完成。"; echo -e "\n${GREEN}🎉 安装完成!${NC}"; read -p "按回车键返回主菜单..."
+  log_message SUCCESS "脚本已安装/更新到: ${INSTALLED_SCRIPT_PATH}, 并创建/更新了快捷方式。"
+  echo -e "${GREEN}✅ 脚本已成功安装/更新，并设置了快捷方式 'd' 和 'ddns'。${NC}"
+
+  # 如果是首次安装，则设置定时任务并运行首次更新
+  if [ ! -f "$CONFIG_FILE" ]; then
+    manage_cron_job
+    echo -e "${BLUE}⚡ 正在运行首次更新...${NC}"; run_ddns_update
+  fi
+  
+  log_message INFO "安装/更新完成。"; echo -e "\n${GREEN}🎉 操作完成!${NC}"; read -p "按回车键返回主菜单..."
 }
 
 show_current_config() {
@@ -356,8 +378,34 @@ view_logs() {
 }
 
 # =====================================================================
-# 核心 DDNS 逻辑函数 (完整)
+# 核心 DDNS 逻辑与自动更新函数
 # =====================================================================
+
+perform_update() {
+    local script_path="$1"
+    local dest_path="$2"
+    # 移除旧的快捷方式以防它们是指向旧位置的软链接
+    rm -f "/usr/local/bin/d" "/usr/local/bin/ddns"
+    
+    log_message INFO "开始自动更新脚本..."
+    if cp -f "$script_path" "$dest_path" && chmod 755 "$dest_path"; then
+        # 重新创建快捷方式
+        ln -sf "$dest_path" "/usr/local/bin/d"
+        ln -sf "$dest_path" "/usr/local/bin/ddns"
+        
+        local script_version; script_version=$(grep -m 1 '版本:' "$dest_path" | awk '{print $3}')
+        log_message SUCCESS "脚本已成功更新到版本 $script_version。"
+        echo -e "${GREEN}✅ 脚本已更新至最新版本 ($script_version)。正在重新加载...${NC}"
+        sleep 2
+        # exec 命令会用新脚本进程替换当前进程，并保留传入的参数
+        exec "$dest_path" "${@:3}"
+    else
+        log_message ERROR "自动更新失败！请尝试手动运行安装选项。"
+        echo -e "${RED}❌ 自动更新失败！请检查权限。${NC}"
+        exit 1
+    fi
+}
+
 send_tg_notification() {
   local message="$1"; if [[ -z "$TG_BOT_TOKEN" || -z "$TG_CHAT_ID" ]]; then return 0; fi
   local encoded_message; encoded_message=$(echo -n "$message" | jq -s -R -r @uri)
@@ -427,6 +475,22 @@ run_ddns_update() {
 main() {
   for dep in curl grep sed jq; do if ! command -v "$dep" &>/dev/null; then echo -e "${RED}❌ 错误: 缺少依赖: ${dep}。${NC}" >&2; exit 1; fi; done
   if [ "$(id -u)" -ne 0 ]; then echo -e "${RED}❌ 错误: 此脚本需要 root 权限运行。${NC}" >&2; exit 1; fi
+  
+  # 【新增】版本检测与自动更新逻辑
+  local SCRIPT_VERSION; SCRIPT_VERSION=$(grep -m 1 '版本:' "$0" | awk '{print $3}')
+  if [ -f "$INSTALLED_SCRIPT_PATH" ]; then
+      local INSTALLED_VERSION; INSTALLED_VERSION=$(grep -m 1 '版本:' "$INSTALLED_SCRIPT_PATH" | awk '{print $3}')
+      if [[ -n "$SCRIPT_VERSION" && -n "$INSTALLED_VERSION" && "$SCRIPT_VERSION" != "$INSTALLED_VERSION" ]]; then
+          echo -e "${YELLOW}检测到新版本！${NC}"
+          echo -e "  当前运行版本: ${CYAN}$SCRIPT_VERSION${NC}"
+          echo -e "  系统中已安装版本:   ${PURPLE}$INSTALLED_VERSION${NC}"
+          read -p "$(echo -e "${GREEN}是否要立即更新已安装的脚本? [Y/n]: ${NC}")" confirm_update
+          if [[ ! "${confirm_update,,}" =~ ^n$ ]]; then
+              perform_update "$0" "$INSTALLED_SCRIPT_PATH" "$@"
+          fi
+      fi
+  fi
+  
   init_dirs
   if [ $# -gt 0 ]; then
     case "$1" in update) run_ddns_update; exit 0 ;; uninstall) uninstall_ddns; exit 0 ;; *) echo -e "${RED}❌ 无效参数: ${1}${NC}"; exit 1 ;; esac
